@@ -16,6 +16,11 @@ from config import FILE_PATHS
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
+# 统一中文文本使用的字体（用于避免缺失字形警告）
+TEXT_FONT_KWARGS = {
+    'fontfamily': plt.rcParams['font.sans-serif'][0]
+} if plt.rcParams.get('font.sans-serif') else {}
+
 
 def load_pickle(filepath):
     """加载pickle文件"""
@@ -163,7 +168,8 @@ def plot_channel_timeseries(ax, datetimes, sequence, channel_idx, stats, title, 
     ax.text(0.99, 0.95, stats_text,
             transform=ax.transAxes,
             ha='right', va='top',
-            fontsize=8, family='monospace',
+            fontsize=8,
+            **TEXT_FONT_KWARGS,
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.85, edgecolor=color))
 
 def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
@@ -274,7 +280,8 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
     ax1.text(0.02, 0.98, stats_text,
              transform=ax1.transAxes, verticalalignment='top',
              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.85),
-             fontsize=10, family='monospace')
+             fontsize=10,
+             **TEXT_FONT_KWARGS)
 
     # ==================== 2. 局部放大（显示噪声）====================
     print("  - 绘制局部放大图...")
@@ -494,7 +501,7 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
             transform=ax8.transAxes,
             verticalalignment='top',
             fontsize=9.5,
-            family='monospace',
+            **TEXT_FONT_KWARGS,
             bbox=dict(boxstyle='round', facecolor='#f0f9ff',
                      alpha=0.95, edgecolor='#3b82f6', linewidth=2.5))
 
@@ -640,7 +647,7 @@ def visualize_channel_feature_overview(normal_data_path, anomaly_data_path,
         0.02, 0.95, normal_summary,
         transform=ax_summary_normal.transAxes,
         va='top', ha='left', fontsize=10,
-        family='monospace',
+        **TEXT_FONT_KWARGS,
         bbox=dict(boxstyle='round', facecolor='#f1f5f9',
                   edgecolor='#1d4ed8', linewidth=2, alpha=0.95)
     )
@@ -653,7 +660,7 @@ def visualize_channel_feature_overview(normal_data_path, anomaly_data_path,
         0.02, 0.95, anomaly_summary,
         transform=ax_summary_anomaly.transAxes,
         va='top', ha='left', fontsize=10,
-        family='monospace',
+        **TEXT_FONT_KWARGS,
         bbox=dict(boxstyle='round', facecolor='#fef3c7',
                   edgecolor='#b45309', linewidth=2, alpha=0.95)
     )
