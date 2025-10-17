@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 import pickle
 from pathlib import Path
 
+from config import FILE_PATHS
+
 # 设置中文显示
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
@@ -45,10 +47,132 @@ def create_timestamps(unit_data, start_datetime='2024-01-01 00:00:00', sampling_
     return all_datetimes
 
 
+def prepare_unit_sequence(unit_data, start_datetime, sampling_interval):
+    """将单元的所有片段拼接成连续序列及对应的时间戳"""
+
+    if unit_data is None:
+        return None, None
+
+    segments = np.vstack(unit_data['segments'])
+    datetimes = create_timestamps(unit_data, start_datetime, sampling_interval)
+    return segments, datetimes
+
+
+def compute_channel_statistics(sequence):
+    """计算每个通道的统计量"""
+
+    if sequence is None:
+        return []
+
+    stats = []
+    for ch in range(sequence.shape[1]):
+        channel_data = sequence[:, ch]
+        stats.append({
+            'min': float(np.min(channel_data)),
+            'max': float(np.max(channel_data)),
+            'mean': float(np.mean(channel_data)),
+            'std': float(np.std(channel_data)),
+            'median': float(np.median(channel_data)),
+            'p05': float(np.percentile(channel_data, 5)),
+            'p95': float(np.percentile(channel_data, 95)),
+        })
+    return stats
+
+
+def format_stats_text(channel_idx, stats):
+    """格式化通道统计信息文本"""
+
+    return (
+        f"通道{channel_idx}\n"
+        f"  min: {stats['min']:.4f}\n"
+        f"  max: {stats['max']:.4f}\n"
+        f"  mean: {stats['mean']:.4f}\n"
+        f"  std: {stats['std']:.4f}\n"
+        f"  median: {stats['median']:.4f}\n"
+        f"  p05-p95: [{stats['p05']:.4f}, {stats['p95']:.4f}]"
+    )
+
+
+def build_dataset_summary(unit_id, unit_data, datetimes, stats):
+    """生成数据集的文本摘要"""
+
+    if unit_data is None or datetimes is None:
+        return "无数据可展示"
+
+    duration_hours = (datetimes[-1] - datetimes[0]).total_seconds() / 3600
+    n_points = len(datetimes)
+    n_channels = len(stats)
+    n_segments = len(unit_data['segments'])
+
+    drift_rate = unit_data.get('drift_rate', 0.0)
+    noise_level = unit_data.get('noise_level', 0.0)
+    trend_pattern = unit_data.get('trend_pattern', 'unknown')
+
+    summary_lines = [
+        f"【单元 {unit_id} 数据摘要】",
+        "",
+        f"数据点数: {n_points:,}",
+        f"通道数: {n_channels}",
+        f"分段数: {n_segments}",
+        f"起始时间: {datetimes[0].strftime('%Y-%m-%d %H:%M:%S')}",
+        f"结束时间: {datetimes[-1].strftime('%Y-%m-%d %H:%M:%S')}",
+        f"总时长: {duration_hours:.2f} 小时",
+        "",
+        f"趋势模式: {trend_pattern}",
+        f"漂移率: {drift_rate:.6f}",
+        f"噪声水平: {noise_level:.4f}",
+        "",
+        "每通道均值范围:",
+    ]
+
+    for idx, channel_stats in enumerate(stats):
+        summary_lines.append(
+            f"  通道{idx}: mean={channel_stats['mean']:.4f} ± {channel_stats['std']:.4f}"
+        )
+
+    return "\n".join(summary_lines)
+
+
+def plot_channel_timeseries(ax, datetimes, sequence, channel_idx, stats, title, color):
+    """绘制单个通道的时间序列"""
+
+    if sequence is None or datetimes is None:
+        ax.text(0.5, 0.5, '无数据', ha='center', va='center', fontsize=12, color='gray')
+        ax.axis('off')
+        return
+
+    downsample = max(1, len(datetimes) // 6000)
+    times = datetimes[::downsample]
+    values = sequence[::downsample, channel_idx]
+
+    ax.plot(times, values, color=color, linewidth=1.0, alpha=0.8)
+    ax.axhline(stats['mean'], color=color, linestyle='--', linewidth=1, alpha=0.9,
+               label='均值')
+    ax.axhline(stats['mean'] + stats['std'], color=color, linestyle=':', linewidth=0.8,
+               alpha=0.6)
+    ax.axhline(stats['mean'] - stats['std'], color=color, linestyle=':', linewidth=0.8,
+               alpha=0.6)
+
+    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.set_ylabel('幅值', fontsize=10)
+    ax.grid(True, alpha=0.25, linestyle='--')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=25, ha='right', fontsize=8)
+
+    stats_text = format_stats_text(channel_idx, stats)
+    ax.text(0.99, 0.95, stats_text,
+            transform=ax.transAxes,
+            ha='right', va='top',
+            fontsize=8, family='monospace',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.85, edgecolor=color))
+
 def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
                                      output_dir='figures',
                                      start_datetime='2024-01-01 00:00:00',
-                                     sampling_interval=10):
+                                     sampling_interval=10,
+                                     normal_unit_id=None,
+                                     anomaly_unit_id=None,
+                                     output_path=None):
     """
     完整可视化原子钟遥测数据（基于真实timestamp）
 
@@ -86,8 +210,11 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
         print("  ✗ 错误：没有正常单元数据！")
         return
 
-    # 选择第一个正常单元作为主要展示对象
-    selected_normal_id = normal_units[0]
+    # 选择要展示的正常单元
+    if normal_unit_id and normal_unit_id in normal_data:
+        selected_normal_id = normal_unit_id
+    else:
+        selected_normal_id = normal_units[0]
     selected_normal_unit = normal_data[selected_normal_id]
 
     print(f"\n[2/4] 处理数据...")
@@ -282,7 +409,10 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
     ax7 = fig.add_subplot(gs[4, 0])
 
     if len(anomaly_units) > 0:
-        selected_anomaly_id = anomaly_units[0]
+        if anomaly_unit_id and anomaly_unit_id in anomaly_data:
+            selected_anomaly_id = anomaly_unit_id
+        else:
+            selected_anomaly_id = anomaly_units[0]
         selected_anomaly_unit = anomaly_data[selected_anomaly_id]
 
         anomaly_segments = np.vstack(selected_anomaly_unit['segments'])
@@ -374,7 +504,12 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
 
     # 保存图片
     print(f"\n[4/4] 保存可视化...")
-    output_path = Path(output_dir) / 'telemetry_data_complete_visualization.png'
+    if output_path is None:
+        output_path = Path(output_dir) / 'telemetry_data_complete_visualization.png'
+    else:
+        output_path = Path(output_path)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"  ✓ 已保存至: {output_path}")
 
@@ -385,18 +520,173 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
     plt.show()
 
 
+def visualize_channel_feature_overview(normal_data_path, anomaly_data_path,
+                                       start_datetime='2024-01-01 00:00:00',
+                                       sampling_interval=10,
+                                       normal_unit_id=None,
+                                       anomaly_unit_id=None,
+                                       output_path=None):
+    """对比展示正常与异常单元的全部通道特征"""
+
+    print("=" * 80)
+    print("原子钟遥测数据通道特征总览")
+    print("=" * 80)
+
+    print(f"\n[1/3] 加载数据...")
+    print(f"  正常数据: {normal_data_path}")
+    print(f"  异常数据: {anomaly_data_path}")
+
+    normal_data = load_pickle(normal_data_path)
+    anomaly_data = load_pickle(anomaly_data_path) if Path(anomaly_data_path).exists() else {}
+
+    normal_units = list(normal_data.keys())
+    anomaly_units = list(anomaly_data.keys())
+
+    if not normal_units:
+        print("  ✗ 错误：无正常单元数据！")
+        return
+
+    if normal_unit_id and normal_unit_id in normal_data:
+        selected_normal_id = normal_unit_id
+    else:
+        selected_normal_id = normal_units[0]
+
+    selected_normal_unit = normal_data[selected_normal_id]
+    normal_sequence, normal_datetimes = prepare_unit_sequence(
+        selected_normal_unit, start_datetime, sampling_interval)
+    normal_stats = compute_channel_statistics(normal_sequence)
+
+    if anomaly_units:
+        if anomaly_unit_id and anomaly_unit_id in anomaly_data:
+            selected_anomaly_id = anomaly_unit_id
+        else:
+            selected_anomaly_id = anomaly_units[0]
+
+        selected_anomaly_unit = anomaly_data[selected_anomaly_id]
+        anomaly_sequence, anomaly_datetimes = prepare_unit_sequence(
+            selected_anomaly_unit, start_datetime, sampling_interval)
+        anomaly_stats = compute_channel_statistics(anomaly_sequence)
+    else:
+        selected_anomaly_id = None
+        selected_anomaly_unit = None
+        anomaly_sequence = None
+        anomaly_datetimes = None
+        anomaly_stats = []
+
+    n_channels = 0
+    if normal_sequence is not None:
+        n_channels = normal_sequence.shape[1]
+    elif anomaly_sequence is not None:
+        n_channels = anomaly_sequence.shape[1]
+
+    if n_channels == 0:
+        print("  ✗ 错误：无可用于展示的通道数据！")
+        return
+
+    print(f"\n[2/3] 生成可视化... (共 {n_channels} 个通道)")
+
+    colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4']
+
+    fig = plt.figure(figsize=(22, 3 * n_channels + 4))
+    gs = fig.add_gridspec(n_channels + 1, 2,
+                          height_ratios=[3] * n_channels + [1.6],
+                          hspace=0.4, wspace=0.25)
+
+    for ch in range(n_channels):
+        color = colors[ch % len(colors)]
+
+        ax_normal = fig.add_subplot(gs[ch, 0])
+        title_normal = f'正常通道{ch} - 单元 {selected_normal_id}'
+        if normal_sequence is not None:
+            plot_channel_timeseries(
+                ax_normal,
+                normal_datetimes,
+                normal_sequence,
+                ch,
+                normal_stats[ch],
+                title_normal,
+                color,
+            )
+        else:
+            ax_normal.text(0.5, 0.5, '无正常数据', ha='center', va='center',
+                           fontsize=12, color='gray')
+            ax_normal.axis('off')
+
+        ax_anomaly = fig.add_subplot(gs[ch, 1])
+        if anomaly_sequence is not None and ch < anomaly_sequence.shape[1]:
+            title_anomaly = (
+                f'异常通道{ch} - 单元 {selected_anomaly_id} '
+                f"({selected_anomaly_unit.get('anomaly_type', 'unknown')})"
+            )
+            plot_channel_timeseries(
+                ax_anomaly,
+                anomaly_datetimes,
+                anomaly_sequence,
+                ch,
+                anomaly_stats[ch],
+                title_anomaly,
+                color,
+            )
+        else:
+            ax_anomaly.text(0.5, 0.5, '无异常数据', ha='center', va='center',
+                            fontsize=12, color='gray')
+            ax_anomaly.axis('off')
+
+    ax_summary_normal = fig.add_subplot(gs[-1, 0])
+    ax_summary_normal.axis('off')
+    normal_summary = build_dataset_summary(
+        selected_normal_id, selected_normal_unit, normal_datetimes, normal_stats)
+    ax_summary_normal.text(
+        0.02, 0.95, normal_summary,
+        transform=ax_summary_normal.transAxes,
+        va='top', ha='left', fontsize=10,
+        family='monospace',
+        bbox=dict(boxstyle='round', facecolor='#f1f5f9',
+                  edgecolor='#1d4ed8', linewidth=2, alpha=0.95)
+    )
+
+    ax_summary_anomaly = fig.add_subplot(gs[-1, 1])
+    ax_summary_anomaly.axis('off')
+    anomaly_summary = build_dataset_summary(
+        selected_anomaly_id, selected_anomaly_unit, anomaly_datetimes, anomaly_stats)
+    ax_summary_anomaly.text(
+        0.02, 0.95, anomaly_summary,
+        transform=ax_summary_anomaly.transAxes,
+        va='top', ha='left', fontsize=10,
+        family='monospace',
+        bbox=dict(boxstyle='round', facecolor='#fef3c7',
+                  edgecolor='#b45309', linewidth=2, alpha=0.95)
+    )
+
+    fig.suptitle('正常 vs 异常 单元通道特征概览', fontsize=18, fontweight='bold', y=0.995)
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
+
+    print(f"\n[3/3] 保存图像...")
+    if output_path is None:
+        output_path = FILE_PATHS.get(
+            'channel_overview_visualization',
+            Path('figures') / 'telemetry_channel_overview.png'
+        )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"  ✓ 已保存至: {output_path}")
+
+    print("\n" + "=" * 80)
+    print("✓ 通道特征可视化完成！")
+    print("=" * 80)
+
+    plt.show()
+
+
 def main():
     """主函数"""
 
-    # 文件路径（根据你的实际输出调整）
-    normal_data_path = r'E:\projects\AtomClock\proj2\src\data\normal_units_raw.pkl'
-    anomaly_data_path = r'E:\projects\AtomClock\proj2\src\data\anomaly_units_raw.pkl'
-    output_dir = r'E:\projects\AtomClock\proj2\src\figures'
-
-    # 或者使用相对路径
-    # normal_data_path = 'data/normal_units_raw.pkl'
-    # anomaly_data_path = 'data/anomaly_units_raw.pkl'
-    # output_dir = 'figures'
+    # 文件路径
+    normal_data_path = FILE_PATHS['raw_normal_data']
+    anomaly_data_path = FILE_PATHS['raw_anomaly_data']
+    output_dir = Path(FILE_PATHS['data_visualization']).parent
 
     # 时间参数
     start_datetime = '2024-01-01 00:00:00'
@@ -407,6 +697,13 @@ def main():
         normal_data_path=normal_data_path,
         anomaly_data_path=anomaly_data_path,
         output_dir=output_dir,
+        start_datetime=start_datetime,
+        sampling_interval=sampling_interval
+    )
+
+    visualize_channel_feature_overview(
+        normal_data_path=normal_data_path,
+        anomaly_data_path=anomaly_data_path,
         start_datetime=start_datetime,
         sampling_interval=sampling_interval
     )

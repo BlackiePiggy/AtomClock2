@@ -95,6 +95,7 @@ FILE_PATHS = {
     'raw_normal_data': os.path.join(DATA_DIR, 'normal_units_raw.pkl'),
     'raw_anomaly_data': os.path.join(DATA_DIR, 'anomaly_units_raw.pkl'),
     'data_visualization': os.path.join(FIGURES_DIR, 'step0_data_longterm.png'),
+    'channel_overview_visualization': os.path.join(FIGURES_DIR, 'step0_channel_overview.png'),
 
     # Step 1: 特征提取
     'normal_features': os.path.join(DATA_DIR, 'normal_features.pkl'),
