@@ -466,35 +466,35 @@ def visualize_complete_telemetry_data(normal_data_path, anomaly_data_path,
     summary_text = f"""
 【原子钟遥测数据特征总结】
 
-📊 基本信息
-  • 单元ID: {selected_normal_id}
-  • 数据点数: {n_points:,} 点
-  • 通道数: {n_channels} 个
-  • 分段数: {n_segments} 段
+【基本信息】
+  - 单元ID: {selected_normal_id}
+  - 数据点数: {n_points:,} 点
+  - 通道数: {n_channels} 个
+  - 分段数: {n_segments} 段
 
-⏱ 时间特征
-  • 起始时间: {all_datetimes[0].strftime('%Y-%m-%d %H:%M:%S')}
-  • 结束时间: {all_datetimes[-1].strftime('%Y-%m-%d %H:%M:%S')}
-  • 总时长: {time_span:.2f} 小时 ({time_span/24:.2f} 天)
-  • 采样率: ~{sampling_rate:.1f} 点/小时
-  • 采样间隔: {sampling_interval} 秒/点
+【时间特征】
+  - 起始时间: {all_datetimes[0].strftime('%Y-%m-%d %H:%M:%S')}
+  - 结束时间: {all_datetimes[-1].strftime('%Y-%m-%d %H:%M:%S')}
+  - 总时长: {time_span:.2f} 小时 ({time_span/24:.2f} 天)
+  - 采样率: ~{sampling_rate:.1f} 点/小时
+  - 采样间隔: {sampling_interval} 秒/点
 
-📈 信号特征
-  • 趋势模式: {selected_normal_unit.get('trend_pattern', 'unknown')}
-  • 漂移率: {selected_normal_unit.get('drift_rate', 0):.6f}
-  • 噪声水平: {selected_normal_unit.get('noise_level', 0):.4f}
-  • 信噪比: {abs(mean_val/std_val):.2f}
+【信号特征】
+  - 趋势模式: {selected_normal_unit.get('trend_pattern', 'unknown')}
+  - 漂移率: {selected_normal_unit.get('drift_rate', 0):.6f}
+  - 噪声水平: {selected_normal_unit.get('noise_level', 0):.4f}
+  - 信噪比: {abs(mean_val/std_val):.2f}
 
-🔍 数据质量 (通道{channel_idx})
-  • 值域: [{min_val:.4f}, {max_val:.4f}]
-  • 均值: {mean_val:.4f}
-  • 标准差: {std_val:.4f}
-  • 上升段: {positive_count}/{len(segment_trends)} ({positive_count/len(segment_trends)*100:.1f}%)
-  • 下降段: {negative_count}/{len(segment_trends)} ({negative_count/len(segment_trends)*100:.1f}%)
+【数据质量】(通道{channel_idx})
+  - 值域: [{min_val:.4f}, {max_val:.4f}]
+  - 均值: {mean_val:.4f}
+  - 标准差: {std_val:.4f}
+  - 上升段: {positive_count}/{len(segment_trends)} ({positive_count/len(segment_trends)*100:.1f}%)
+  - 下降段: {negative_count}/{len(segment_trends)} ({negative_count/len(segment_trends)*100:.1f}%)
 
-📦 数据集规模
-  • 正常单元: {len(normal_data)} 个
-  • 异常单元: {len(anomaly_data)} 个
+【数据集规模】
+  - 正常单元: {len(normal_data)} 个
+  - 异常单元: {len(anomaly_data)} 个
     """
 
     ax8.text(0.05, 0.95, summary_text,
