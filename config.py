@@ -113,6 +113,12 @@ FILE_PATHS = {
     'imputed_anomaly': os.path.join(DATA_DIR, 'imputed_anomaly_features.pkl'),
     'decompose_visualization': os.path.join(FIGURES_DIR, 'step3_decomposition.png'),
     'methods_comparison': os.path.join(FIGURES_DIR, 'step3_methods_comparison.png'),
+    'normal_trend_components': os.path.join(DATA_DIR, 'normal_trend_components.pkl'),
+    'normal_residual_components': os.path.join(DATA_DIR, 'normal_residual_components.pkl'),
+    'anomaly_trend_components': os.path.join(DATA_DIR, 'anomaly_trend_components.pkl'),
+    'anomaly_residual_components': os.path.join(DATA_DIR, 'anomaly_residual_components.pkl'),
+    'decompose_normal_examples_dir': os.path.join(FIGURES_DIR, 'step3_normal_examples'),
+    'decompose_anomaly_examples_dir': os.path.join(FIGURES_DIR, 'step3_anomaly_examples'),
 
     # Step 4-5: 模型训练
     'trained_model': os.path.join(MODELS_DIR, 'ss_mst_vae.pth'),
